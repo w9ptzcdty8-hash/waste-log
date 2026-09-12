@@ -41,8 +41,8 @@
 
   var entries = loadJSON(STORAGE_ENTRIES, []);
   var tags = loadJSON(STORAGE_TAGS, []); // [{id, name}]
-  var plan = loadJSON(STORAGE_PLAN, null); // {name, targetAmount, deadline, reward, subtractWasted}
-  var planHistory = loadJSON(STORAGE_PLAN_HISTORY, []); // [{id, name, targetAmount, achievedAmount, reward, deadline, completedAt}]
+  var plan = loadJSON(STORAGE_PLAN, null); // {name, targetAmount, startDate, deadline, reward, subtractWasted}
+  var planHistory = loadJSON(STORAGE_PLAN_HISTORY, []); // [{id, name, targetAmount, achievedAmount, startDate, reward, deadline, completedAt}]
 
   function saveEntries() { saveJSON(STORAGE_ENTRIES, entries); }
   function saveTags() { saveJSON(STORAGE_TAGS, tags); }
@@ -830,6 +830,7 @@
   var planForm = document.getElementById("planForm");
   var planNameInput = document.getElementById("planName");
   var planTargetAmountInput = document.getElementById("planTargetAmount");
+  var planStartDateInput = document.getElementById("planStartDate");
   var planDeadlineInput = document.getElementById("planDeadline");
   var planRewardInput = document.getElementById("planReward");
   var planSubtractWastedInput = document.getElementById("planSubtractWasted");
@@ -838,16 +839,28 @@
 
   var currentPlanProgressAmount = 0;
 
+  function getPlanStartDate() {
+    if (!plan || !plan.startDate) return null;
+    return new Date(plan.startDate + "T00:00:00");
+  }
+
+  function isEntryOnOrAfterPlanStart(en) {
+    var start = getPlanStartDate();
+    return !start || new Date(en.datetime) >= start;
+  }
+
   function openPlanModal() {
     if (plan) {
       planNameInput.value = plan.name;
       planTargetAmountInput.value = plan.targetAmount;
+      planStartDateInput.value = plan.startDate || toDateValue(new Date());
       planDeadlineInput.value = plan.deadline || "";
       planRewardInput.value = plan.reward || "";
       planSubtractWastedInput.checked = !!plan.subtractWasted;
       planDeleteBtn.hidden = false;
     } else {
       planForm.reset();
+      planStartDateInput.value = toDateValue(new Date());
       planSubtractWastedInput.checked = true;
       planDeleteBtn.hidden = true;
     }
@@ -884,9 +897,15 @@
       return;
     }
 
+    if (!planStartDateInput.value) {
+      showToast("開始日を入力してください");
+      return;
+    }
+
     plan = {
       name: planNameInput.value.trim() || "無題の計画",
       targetAmount: target,
+      startDate: planStartDateInput.value,
       deadline: planDeadlineInput.value || "",
       reward: planRewardInput.value.trim(),
       subtractWasted: planSubtractWastedInput.checked
@@ -907,6 +926,7 @@
       name: plan.name,
       targetAmount: plan.targetAmount,
       achievedAmount: currentPlanProgressAmount,
+      startDate: plan.startDate || "",
       reward: plan.reward,
       deadline: plan.deadline,
       completedAt: new Date().toISOString()
@@ -934,6 +954,7 @@
 
     var totalEndured = 0, totalWasted = 0;
     entries.forEach(function (en) {
+      if (!isEntryOnOrAfterPlanStart(en)) return;
       if (en.type === "endured") totalEndured += en.amount;
       else totalWasted += en.amount;
     });
@@ -1043,8 +1064,9 @@
   --------------------------------------------------------- */
 
   function renderPlanChart(target) {
-    if (entries.length === 0) {
-      planChartWrapper.innerHTML = '<p class="empty-state">記録がまだありません</p>';
+    var eligibleEntries = entries.filter(isEntryOnOrAfterPlanStart);
+    if (eligibleEntries.length === 0) {
+      planChartWrapper.innerHTML = '<p class="empty-state">開始日以降の記録がまだありません</p>';
       return;
     }
 
@@ -1066,7 +1088,7 @@
     var baseline = 0;
     var monthlyDelta = months.map(function () { return 0; });
 
-    entries.forEach(function (en) {
+    eligibleEntries.forEach(function (en) {
       var d = new Date(en.datetime);
       var c = contribution(en);
       if (d < windowStart) {
@@ -1151,9 +1173,15 @@
       return;
     }
 
+    if (!planStartDateInput.value) {
+      showToast("開始日を入力してください");
+      return;
+    }
+
     plan = {
       name: planNameInput.value.trim() || "無題の計画",
       targetAmount: target,
+      startDate: planStartDateInput.value,
       deadline: planDeadlineInput.value || "",
       reward: planRewardInput.value.trim(),
       subtractWasted: planSubtractWastedInput.checked
